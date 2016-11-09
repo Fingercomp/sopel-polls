@@ -7,36 +7,55 @@ import math
 
 from sopel.module import commands
 
+yes_answers = ["on", "yes", "+", "yep", "yup", "yeah"]
+no_answers = ["off", "no", "nope", "nop", "no way", "nein"]
+
 
 class Poll:
 
-    # XXX: The Mongo database URL
+    # XXX: Mongo database URL
     url = "mongodb://localhost:15460"
+
+    # XXX: list of admins (they have access to admin commands)
+    admins = ["Totoro", "fingercomp", "LeshaInc"]
 
     partial = {}
 
     codename = re.compile("^[A-Za-z0-9_.-]{3,30}$")
     option = re.compile("^\S.*$")
 
-    # XXX: Put nicks of admins here (they have access to the admin commands):
-    admins = ["Totoro", "fingercomp", "LeshaInc"]
-
     def __init__(self):
         self.client = MongoClient(self.url)
         self.db = self.client.brote.poll
         self.db.create_index([("name", pymongo.ASCENDING)])
 
+        self.updates()
+
     def __del__(self):
         self.client.close()
 
-    def new_poll(self, author, name, title, options, date, public):
+    def updates(self):
+        # Added "anonymous" polls
+        self.db.find_one_and_update({
+            "anonymous": {
+                "$exists": False
+            }
+        }, {"$set": {"anonymous": False}})
+
+        # Renamed field to more sensible name
+        self.db.find_one_and_update({
+            "public": {"$exists": True}
+        }, {"$rename": {"public": "interim"}})
+
+    def new_poll(self, author, name, title, options, date, interim, anonymous):
         poll = {"author": author,
                 "name": name,
                 "title": title,
                 "options": options,
                 "date": date,
                 "open": False,
-                "public": public}
+                "interim": interim,
+                "anonymous": anonymous}
         self.db.insert_one(poll)
 
     def get_poll(self, name):
@@ -122,7 +141,7 @@ class Poll:
     def isReady(self, part_poll):
         if (part_poll["name"] and
                 part_poll["title"] and
-                part_poll["public"] is not None and
+                part_poll["interim"] is not None and
                 part_poll["options"] and
                 len([x for x in part_poll["options"]]) > 1):
             return True
@@ -181,11 +200,14 @@ def poll(bot, trigger):
         arg = trigger.group(2)[len(cmd) + 1:]
     if trigger.nick not in self.partial:
         if cmd == "create":
-            self.partial[trigger.nick] = {"name": None,
-                                          "title": None,
-                                          "date": None,
-                                          "options": None,
-                                          "public": None}
+            self.partial[trigger.nick] = {
+                "name": None,
+                "title": None,
+                "date": None,
+                "options": None,
+                "interim": None,
+                "settings": {"anonymous": False}
+            }
             bot.reply("\x02SWITCHED TO EDIT MODE\x02. "
                       "Let's create a new poll!")
             bot.reply("Type \x1d.poll help\x1d for the list of commands")
@@ -253,7 +275,7 @@ def poll(bot, trigger):
             bot.reply("\x02Title:\x02 " + poll["title"])
             bot.reply("\x02Created by\x02 " + poll["author"] + " at " +
                       str(poll["date"]))
-            if poll["open"] and not poll["public"]:
+            if poll["open"] and not poll["interim"]:
                 total = 0
                 maxLen = 0
                 for item in poll["options"]:
@@ -282,7 +304,8 @@ def poll(bot, trigger):
                               str(item["index"]) + "\x02: " +
                               "{:<{len}}".format(item["name"] + "\x0f",
                                                  len=maxLen + 1) +
-                              " │ " + ", ".join(item["votes"]))
+                              (" │ " + ", ".join(item["votes"])
+                               if not poll["anonymous"] else ""))
             return True
         elif cmd == "list":
             if self.db.count() == 0:
@@ -380,15 +403,13 @@ def poll(bot, trigger):
             bot.reply("The \x02title\x02 set to '" + arg + "\x0f'!")
             return True
         elif cmd == "@":
-            if arg.lower() in ["on", "yes", "+", "yep", "yup", "yeah", "show",
-                               "shown", "display", "visible"]:
-                poll["public"] = True
-                bot.reply("Poll votes are \x02shown\x02!")
+            if arg.lower() in yes_answers:
+                poll["interim"] = True
+                bot.reply("Interim results are set to be \x02available\x02!")
                 return True
-            elif arg.lower() in ["off", "no", "nope", "nop",
-                                 "no way", "nein", "hide", "hidden"]:
-                poll["public"] = False
-                bot.reply("Poll votes are \x02hidden\x02!")
+            elif arg.lower() in no_answers:
+                poll["interim"] = False
+                bot.reply("Results will be \x02unavaiable\x02 until closed!")
                 return True
             else:
                 bot.reply("Erm, what?")
@@ -400,11 +421,11 @@ def poll(bot, trigger):
             bot.reply("\x02Title:\x02 " +
                       ("'" + poll["title"] + "'"
                        if poll["title"] else "not set"))
-            if poll["public"] is None:
+            if poll["interim"] is None:
                 bot.reply("\x02Votes:\x02 not set")
             else:
-                bot.reply("\x02Votes:\x02 " +
-                          ("shown" if poll["public"] else "hidden"))
+                bot.reply("\x02Interim results:\x02 " +
+                          ("yes" if poll["interim"] else "no"))
             if poll["options"]:
                 bot.reply("\x02Options:\x02 " + ", ".join(
                     "\x02#" + str(pos) + "\x02: " + name + "\x0f"
@@ -412,6 +433,9 @@ def poll(bot, trigger):
                 ))
             else:
                 bot.reply("\x02Options:\x02 not set")
+            bot.reply("The poll is \x02anonymous\x02."
+                      if poll["settings"]["anonymous"] else
+                      "The poll is \x02unanonymous\x02.")
             if self.isReady(poll):
                 bot.reply("Poll is \x02ready\x02 to be commited.")
             else:
@@ -449,6 +473,27 @@ def poll(bot, trigger):
                 poll["options"] = None
             bot.reply("Removed option #" + str(index) + ": '" + opt + "\x0f'")
             return True
+        elif cmd == "=":
+            try:
+                set_name, set_arg = arg.split(" ", 1)
+            except ValueError:
+                set_name = arg
+                set_arg = ""
+            if set_name in ["anon", "anonymous"]:
+                if set_arg in yes_answers:
+                    poll["settings"]["anonymous"] = True
+                    bot.reply("Okay, votes \x02won't\x02 be ever shown.")
+                    return True
+                elif set_arg in no_answers:
+                    poll["settings"]["anonymous"] = False
+                    bot.reply("Well, I've marked your poll as unanonymous.")
+                    return True
+                else:
+                    bot.reply("Uh oh, I couldn't understand what you told me.")
+                    return
+            else:
+                bot.reply("I'm afraid I can't decipher what you gave :<")
+                return
         elif cmd == "~~~":
             if not self.isReady(poll):
                 bot.reply("Some fields are still unset. You can't commit "
@@ -462,7 +507,8 @@ def poll(bot, trigger):
                           title=poll["title"],
                           date=date,
                           options=options,
-                          public=poll["public"])
+                          interim=poll["interim"],
+                          anonymous=poll["settings"]["anonymous"])
             self.partial.pop(trigger.nick)
             bot.reply("Your poll is created. When you're ready, open it.")
             bot.reply("\x02SWITCHED TO NORMAL MODE\x02.")
@@ -472,21 +518,28 @@ def poll(bot, trigger):
             bot.reply("Your poll is deleted. \x02SWITCHED TO NORMAL MODE\x02.")
             return True
         elif cmd == "help":
+            if arg == "=":
+                bot.reply("\x1d.poll = anon <{yes|no}>\x1d: set whether the "
+                          "poll should be anonymous (won't list nicks of "
+                          "voters).")
+                return True
             bot.reply("\x1d.poll # <code name>\x1d: set the code name. It "
                       "must only contain alphanumeric characters, underline, "
                       "dash, or period. Its length must be greater than 2 and "
                       "less than 31.")
             bot.reply("\x1d.poll ! <title>\x1d: set the title.")
-            bot.reply("\x1d.poll @ {on|off}\x1d: when 'on', votes are shown "
+            bot.reply("\x1d.poll @ <{on|off}>\x1d: when 'on', votes are shown "
                       "even if the poll is open.")
             bot.reply("\x1d.poll > <option name>\x1d: append an option.")
             bot.reply("\x1d.poll < <option index>\x1d: remove an option. Note "
                       "that an index is expected (see .poll ?), not the full "
                       "name of an option.")
             bot.reply("\x1d.poll ?\x1d: show pending changes.")
+            bot.reply("\x1d.poll = <setting> [value]\x1d: set some "
+                      "optional settings. See \x1d.poll help =\x1d")
             bot.reply("\x1d.poll ~~~\x1d: commit changes.")
             bot.reply("\x1d.poll ***\x1d: abort changes.")
-            return
+            return True
         else:
             bot.reply("Unknown command.")
             return
