@@ -211,159 +211,7 @@ def poll(bot, trigger):
             bot.reply("\x02SWITCHED TO EDIT MODE\x02. "
                       "Let's create a new poll!")
             bot.reply("Type \x1d.poll help\x1d for the list of commands")
-            return
-        elif cmd in ["close", "open"]:
-            poll = self.get_poll(arg)
-            if not poll:
-                bot.reply("Erm, no such poll.")
-                return
-            if not self.checkAccess(poll, trigger):
-                bot.reply("Erm, no access.")
-                return
-            if cmd == "open":
-                self.open(arg)
-                bot.reply("Poll opened!")
-            else:
-                self.close(arg)
-                bot.reply("Poll closed!")
-        elif cmd == "vote":
-            if len(arg.split(" ")) != 2:
-                bot.reply("Something is wrong with your command. Type "
-                          "\x1d.poll help\x1d for help.")
-                return
-            poll_name, index = arg.split(" ")
-            try:
-                index = int(index)
-            except ValueError:
-                bot.reply("Bad index. Yes, I need an index, not name!")
-                return
-            result = self.vote(user=trigger.nick,
-                               index=index,
-                               name=poll_name)
-            if result is True:
-                poll = self.get_poll(poll_name)
-                for opt in poll["options"]:
-                    if opt["index"] == index:
-                        name = opt["name"]
-                        break
-                bot.reply("You've voted for \x02#" + str(index) + "\x02: " +
-                          name + "\x0f!")
-                return True
-            else:
-                bot.reply("Uh oh, " + result + ".")
-                return
-        elif cmd in ["delete", "remove"]:
-            poll = self.get_poll(arg)
-            if not poll:
-                bot.reply("Erm, no such poll.")
-                return
-            if not self.checkAccess(poll, trigger):
-                bot.reply("Erm, no access.")
-                return
-            if poll["open"]:
-                bot.reply("Close the poll first!")
-                return
-            else:
-                self.del_poll(arg)
-                bot.reply("Poll has been deleted.")
-                return True
-        elif cmd == "info":
-            poll = self.get_poll(arg)
-            if not poll:
-                bot.reply("Uh oh, no such poll.")
-                return
-            bot.reply("\x02Title:\x02 " + poll["title"])
-            bot.reply("\x02Created by\x02 " + poll["author"] + " at " +
-                      str(poll["date"]))
-            if poll["open"] and not poll["interim"]:
-                total = 0
-                maxLen = 0
-                for item in poll["options"]:
-                    total += len(item["votes"])
-                    maxLen = max(maxLen, len(item["name"]))
-                bot.reply("\x02" + str(total) + "\x02 votes total.")
-                for item in poll["options"]:
-                    bot.reply("  \x02#" + str(item["index"]) + "\x02: " +
-                              item["name"])
-            else:
-                total = 0
-                maxLen = 0
-                for item in poll["options"]:
-                    total += len(item["votes"])
-                    maxLen = max(maxLen, len(item["name"]))
-                bot.reply("\x02" + str(total) + "\x02 votes total.")
-                for item in poll["options"]:
-                    vnum = len(item["votes"])
-                    if total == 0:
-                        perc = 0
-                    else:
-                        perc = round(100 * vnum / total, 1)
-                    bot.reply("  \x02" + str(vnum) + "\x02 votes " +
-                              "{:>5}".format(perc) + "% " +
-                              bar(10, perc) + " \x02#" +
-                              str(item["index"]) + "\x02: " +
-                              "{:<{len}}".format(item["name"] + "\x0f",
-                                                 len=maxLen + 1) +
-                              (" │ " + ", ".join(item["votes"])
-                               if not poll["anonymous"] else ""))
             return True
-        elif cmd == "list":
-            if self.db.count() == 0:
-                bot.reply("No polls.")
-                return True
-            polls = [x for x in self.db.find()]
-            bot.reply("Polls: " + ", ".join(
-                ("\x02" if i["open"] else "\x0301") + i["name"] + "\x0f"
-                for i in polls
-            ))
-            return True
-        elif cmd == "unvote":
-            poll = self.get_poll(arg)
-            if not poll:
-                bot.reply("Erm, no such poll.")
-                return
-            for option in poll["options"]:
-                if trigger.nick in option["votes"]:
-                    index = option["index"]
-                    break
-            else:
-                bot.reply("Wait, don't you think you need to vote first?")
-            result = self.del_vote(trigger.nick, index, arg)
-            if result is True:
-                bot.reply("All set! Your vote has been deleted.")
-                return True
-            else:
-                bot.reply("Uh oh, " + result + ".")
-                return
-        elif cmd in ["delvote", "remvote"]:
-            if trigger.nick not in self.admins:
-                bot.reply("I'm sorry, you don't have permission to run this "
-                          "command.")
-                return
-            if len(arg.split(" ")) != 2:
-                bot.reply("Something is wrong with your command. Type "
-                          "\x1d.poll help\x1d for help.")
-                return
-            poll_name, user = arg.split(" ")
-            poll = self.get_poll(poll_name)
-            if not poll:
-                bot.reply("Erm, no such poll.")
-                return
-            for option in poll["options"]:
-                if user in option["votes"]:
-                    index = option["index"]
-                    break
-            else:
-                bot.reply("The user haven't even voted for any of the "
-                          "options!")
-                return
-            result = self.del_vote(user, index, poll_name)
-            if result is True:
-                bot.reply("Well, their vote has been deleted.")
-                return True
-            else:
-                bot.reply("Uh oh, " + result + ".")
-                return
         elif cmd == "help":
             bot.reply("\x1d.poll create\x1d: create a poll, and switch "
                       "to edit mode.")
@@ -380,9 +228,6 @@ def poll(bot, trigger):
             bot.reply("\x1d.poll delvote <poll> <user>\x1d: Remove vote of a "
                       "user. Only available for admins.")
             return True
-        else:
-            bot.reply("Unknown command.")
-            return
     else:
         # EDIT MODE
         poll = self.partial[trigger.nick]
@@ -540,6 +385,159 @@ def poll(bot, trigger):
             bot.reply("\x1d.poll ~~~\x1d: commit changes.")
             bot.reply("\x1d.poll ***\x1d: abort changes.")
             return True
-        else:
-            bot.reply("Unknown command.")
+
+    if cmd in ["close", "open"]:
+        poll = self.get_poll(arg)
+        if not poll:
+            bot.reply("Erm, no such poll.")
             return
+        if not self.checkAccess(poll, trigger):
+            bot.reply("Erm, no access.")
+            return
+        if cmd == "open":
+            self.open(arg)
+            bot.reply("Poll opened!")
+        else:
+            self.close(arg)
+            bot.reply("Poll closed!")
+    elif cmd == "vote":
+        if len(arg.split(" ")) != 2:
+            bot.reply("Something is wrong with your command. Type "
+                      "\x1d.poll help\x1d for help.")
+            return
+        poll_name, index = arg.split(" ")
+        try:
+            index = int(index)
+        except ValueError:
+            bot.reply("Bad index. Yes, I need an index, not name!")
+            return
+        result = self.vote(user=trigger.nick,
+                           index=index,
+                           name=poll_name)
+        if result is True:
+            poll = self.get_poll(poll_name)
+            for opt in poll["options"]:
+                if opt["index"] == index:
+                    name = opt["name"]
+                    break
+            bot.reply("You've voted for \x02#" + str(index) + "\x02: " +
+                      name + "\x0f!")
+            return True
+        else:
+            bot.reply("Uh oh, " + result + ".")
+            return
+    elif cmd in ["delete", "remove"]:
+        poll = self.get_poll(arg)
+        if not poll:
+            bot.reply("Erm, no such poll.")
+            return
+        if not self.checkAccess(poll, trigger):
+            bot.reply("Erm, no access.")
+            return
+        if poll["open"]:
+            bot.reply("Close the poll first!")
+            return
+        else:
+            self.del_poll(arg)
+            bot.reply("Poll has been deleted.")
+            return True
+    elif cmd == "info":
+        poll = self.get_poll(arg)
+        if not poll:
+            bot.reply("Uh oh, no such poll.")
+            return
+        bot.reply("\x02Title:\x02 " + poll["title"])
+        bot.reply("\x02Created by\x02 " + poll["author"] + " at " +
+                  str(poll["date"]))
+        if poll["open"] and not poll["interim"]:
+            total = 0
+            maxLen = 0
+            for item in poll["options"]:
+                total += len(item["votes"])
+                maxLen = max(maxLen, len(item["name"]))
+            bot.reply("\x02" + str(total) + "\x02 votes total.")
+            for item in poll["options"]:
+                bot.reply("  \x02#" + str(item["index"]) + "\x02: " +
+                          item["name"])
+        else:
+            total = 0
+            maxLen = 0
+            for item in poll["options"]:
+                total += len(item["votes"])
+                maxLen = max(maxLen, len(item["name"]))
+            bot.reply("\x02" + str(total) + "\x02 votes total.")
+            for item in poll["options"]:
+                vnum = len(item["votes"])
+                if total == 0:
+                    perc = 0
+                else:
+                    perc = round(100 * vnum / total, 1)
+                bot.reply("  \x02" + str(vnum) + "\x02 votes " +
+                          "{:>5}".format(perc) + "% " +
+                          bar(10, perc) + " \x02#" +
+                          str(item["index"]) + "\x02: " +
+                          "{:<{len}}".format(item["name"] + "\x0f",
+                                             len=maxLen + 1) +
+                          (" │ " + ", ".join(item["votes"])
+                           if not poll["anonymous"] else ""))
+        return True
+    elif cmd == "list":
+        if self.db.count() == 0:
+            bot.reply("No polls.")
+            return True
+        polls = [x for x in self.db.find()]
+        bot.reply("Polls: " + ", ".join(
+            ("\x02" if i["open"] else "\x0301") + i["name"] + "\x0f"
+            for i in polls
+        ))
+        return True
+    elif cmd == "unvote":
+        poll = self.get_poll(arg)
+        if not poll:
+            bot.reply("Erm, no such poll.")
+            return
+        for option in poll["options"]:
+            if trigger.nick in option["votes"]:
+                index = option["index"]
+                break
+        else:
+            bot.reply("Wait, don't you think you need to vote first?")
+        result = self.del_vote(trigger.nick, index, arg)
+        if result is True:
+            bot.reply("All set! Your vote has been deleted.")
+            return True
+        else:
+            bot.reply("Uh oh, " + result + ".")
+            return
+    elif cmd in ["delvote", "remvote"]:
+        if trigger.nick not in self.admins:
+            bot.reply("I'm sorry, you don't have permission to run this "
+                      "command.")
+            return
+        if len(arg.split(" ")) != 2:
+            bot.reply("Something is wrong with your command. Type "
+                      "\x1d.poll help\x1d for help.")
+            return
+        poll_name, user = arg.split(" ")
+        poll = self.get_poll(poll_name)
+        if not poll:
+            bot.reply("Erm, no such poll.")
+            return
+        for option in poll["options"]:
+            if user in option["votes"]:
+                index = option["index"]
+                break
+        else:
+            bot.reply("The user haven't even voted for any of the "
+                      "options!")
+            return
+        result = self.del_vote(user, index, poll_name)
+        if result is True:
+            bot.reply("Well, their vote has been deleted.")
+            return True
+        else:
+            bot.reply("Uh oh, " + result + ".")
+            return
+    else:
+        bot.reply("Unknown command.")
+        return
