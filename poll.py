@@ -39,16 +39,24 @@ class Poll:
 
     def updates(self):
         # Added "anonymous" polls
-        self.db.find_one_and_update({
+        self.db.update_many({
             "anonymous": {
                 "$exists": False
             }
         }, {"$set": {"anonymous": False}})
 
         # Renamed field to more sensible name
-        self.db.find_one_and_update({
+        self.db.update_many({
             "public": {"$exists": True}
         }, {"$rename": {"public": "interim"}})
+
+        # Renamed `open` to `status`
+        self.db.update_many({"open": True},
+                            {"$set": {"status": 1},
+                             "$unset": {"open": 0}})
+        self.db.update_many({"open": False},
+                            {"$set": {"status": 2},
+                             "$unset": {"open": 0}})
 
     def new_poll(self, author, name, title, options, date, interim, anonymous):
         poll = {"author": author,
@@ -56,7 +64,7 @@ class Poll:
                 "title": title,
                 "options": options,
                 "date": date,
-                "open": False,
+                "status": 2,
                 "interim": interim,
                 "anonymous": anonymous}
         self.db.insert_one(poll)
@@ -69,19 +77,19 @@ class Poll:
 
     def open(self, name):
         self.db.find_one_and_update({"name": name}, {
-            "$set": {"open": True}
+            "$set": {"status": 1}
         })
 
     def close(self, name):
         self.db.find_one_and_update({"name": name}, {
-            "$set": {"open": False}
+            "$set": {"status": 0}
         })
 
     def add_vote(self, user, index, name):
         poll = self.get_poll(name)
         if not poll:
             return "no such poll"
-        if not poll["open"]:
+        if poll["status"] == 0:
             return "poll is closed"
         opt = [x for x in filter(
             lambda item: item["index"] == index,
@@ -103,7 +111,7 @@ class Poll:
         poll = self.get_poll(name)
         if not poll:
             return "no such poll"
-        if not poll["open"]:
+        if not poll["status"]:
             return "poll is closed"
         opt = [x for x in filter(
             lambda item: item["index"] == index,
@@ -125,7 +133,7 @@ class Poll:
         poll = self.get_poll(name)
         if not poll:
             return "no such poll"
-        if not poll["open"]:
+        if poll["status"] == 0:
             return "poll is closed"
         for opt in poll["options"]:
             if opt["index"] == index:
@@ -393,11 +401,22 @@ def poll(bot, trigger):
             bot.reply("Erm, no access.")
             return
         if cmd == "open":
-            self.open(arg)
-            bot.reply("Poll opened!")
+            if (poll["status"] == 2 or
+                    poll["status"] == 0 and trigger.nick in self.admins):
+                self.open(arg)
+                bot.reply("Poll opened!")
+                return True
+            else:
+                bot.reply("Unfortunately, the closed poll can't be opened.")
+                return
         else:
-            self.close(arg)
-            bot.reply("Poll closed!")
+            if poll["status"] == 1:
+                self.close(arg)
+                bot.reply("Poll closed!")
+                return True
+            else:
+                bot.reply("The poll is already closed.")
+                return
     elif cmd == "vote":
         if len(arg.split(" ")) != 2:
             bot.reply("Something is wrong with your command. Type "
@@ -432,7 +451,7 @@ def poll(bot, trigger):
         if not self.checkAccess(poll, trigger):
             bot.reply("Erm, no access.")
             return
-        if poll["open"]:
+        if poll["status"] == 1:
             bot.reply("Close the poll first!")
             return
         else:
@@ -447,7 +466,7 @@ def poll(bot, trigger):
         bot.reply("\x02Title:\x02 " + poll["title"])
         bot.reply("\x02Created by\x02 " + poll["author"] + " at " +
                   str(poll["date"]))
-        if poll["open"] and not poll["interim"]:
+        if poll["status"] == 1 and not poll["interim"]:
             total = 0
             maxLen = 0
             for item in poll["options"]:
@@ -484,10 +503,16 @@ def poll(bot, trigger):
             bot.reply("No polls.")
             return True
         polls = [x for x in self.db.find()]
-        bot.reply("Polls: " + ", ".join(
-            ("\x02" if i["open"] else "\x0301") + i["name"] + "\x0f"
-            for i in polls
-        ))
+        reply = []
+        for i in polls:
+            if i["status"] == 0:
+                format_code = "\x0301"
+            elif i["status"] == 1:
+                format_code = "\x0303"
+            elif i["status"] == 2:
+                format_code = "\x0307"
+            reply.append(format_code + i["name"] + "\x0f")
+        bot.reply("Polls: " + ", ".join(reply))
         return True
     elif cmd == "unvote":
         poll = self.get_poll(arg)
