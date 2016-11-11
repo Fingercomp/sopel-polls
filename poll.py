@@ -141,7 +141,6 @@ class Poll:
     def isReady(self, part_poll):
         if (part_poll["name"] and
                 part_poll["title"] and
-                part_poll["interim"] is not None and
                 part_poll["options"] and
                 len([x for x in part_poll["options"]]) > 1):
             return True
@@ -205,9 +204,8 @@ def poll(bot, trigger):
                 "title": None,
                 "date": None,
                 "options": None,
-                "interim": None,
-                "settings": {"anonymous": False}
-            }
+                "optional": {"anonymous": False,
+                             "interim": False}}
             bot.reply("\x02SWITCHED TO EDIT MODE\x02. "
                       "Let's create a new poll!")
             bot.reply("Type \x1d.poll help\x1d for the list of commands")
@@ -247,44 +245,29 @@ def poll(bot, trigger):
             poll["title"] = arg
             bot.reply("The \x02title\x02 set to '" + arg + "\x0f'!")
             return True
-        elif cmd == "@":
-            if arg.lower() in yes_answers:
-                poll["interim"] = True
-                bot.reply("Interim results are set to be \x02available\x02!")
-                return True
-            elif arg.lower() in no_answers:
-                poll["interim"] = False
-                bot.reply("Results will be \x02unavaiable\x02 until closed!")
-                return True
-            else:
-                bot.reply("Erm, what?")
-                return
         elif cmd == "?":
             bot.reply("\x02Codename:\x02 " +
                       ("'" + poll["name"] + "'"
-                       if poll["name"] else "not set"))
+                       if poll["name"] else "\x0307not set\x0f"))
             bot.reply("\x02Title:\x02 " +
                       ("'" + poll["title"] + "'"
-                       if poll["title"] else "not set"))
-            if poll["interim"] is None:
-                bot.reply("\x02Votes:\x02 not set")
-            else:
-                bot.reply("\x02Interim results:\x02 " +
-                          ("yes" if poll["interim"] else "no"))
+                       if poll["title"] else "\x0307not set\x0f"))
+            bot.reply("\x02Interim results:\x02 " +
+                      ("yes" if poll["optional"]["interim"] else "no"))
             if poll["options"]:
                 bot.reply("\x02Options:\x02 " + ", ".join(
                     "\x02#" + str(pos) + "\x02: " + name + "\x0f"
                     for pos, name in enumerate(poll["options"])
                 ))
             else:
-                bot.reply("\x02Options:\x02 not set")
+                bot.reply("\x02Options:\x02 \x0307not set")
             bot.reply("The poll is \x02anonymous\x02."
-                      if poll["settings"]["anonymous"] else
+                      if poll["optional"]["anonymous"] else
                       "The poll is \x02unanonymous\x02.")
             if self.isReady(poll):
-                bot.reply("Poll is \x02ready\x02 to be commited.")
+                bot.reply("\x0303Poll is \x02ready\x02 to be commited.")
             else:
-                bot.reply("Some fields are still \x02unset\x02.")
+                bot.reply("\x0307Some fields are still \x02unset\x02.")
             return True
         elif cmd == ">":
             if not self.option.match(arg):
@@ -325,16 +308,28 @@ def poll(bot, trigger):
                 set_name = arg
                 set_arg = ""
             if set_name in ["anon", "anonymous"]:
-                if set_arg in yes_answers:
-                    poll["settings"]["anonymous"] = True
+                if set_arg.lower() in yes_answers:
+                    poll["optional"]["anonymous"] = True
                     bot.reply("Okay, votes \x02won't\x02 be ever shown.")
                     return True
-                elif set_arg in no_answers:
-                    poll["settings"]["anonymous"] = False
+                elif set_arg.lower() in no_answers:
+                    poll["optional"]["anonymous"] = False
                     bot.reply("Well, I've marked your poll as unanonymous.")
                     return True
                 else:
                     bot.reply("Uh oh, I couldn't understand what you told me.")
+                    return
+            elif set_name == "interim":
+                if set_arg.lower() in yes_answers:
+                    poll["optional"]["interim"] = True
+                    bot.reply("Interim results are set to be \x02available\x02!")
+                    return True
+                elif set_arg.lower() in no_answers:
+                    poll["optional"]["interim"] = False
+                    bot.reply("Results will be \x02unavaiable\x02 until closed!")
+                    return True
+                else:
+                    bot.reply("Erm, what?")
                     return
             else:
                 bot.reply("I'm afraid I can't decipher what you gave :<")
@@ -352,8 +347,8 @@ def poll(bot, trigger):
                           title=poll["title"],
                           date=date,
                           options=options,
-                          interim=poll["interim"],
-                          anonymous=poll["settings"]["anonymous"])
+                          interim=poll["optional"]["interim"],
+                          anonymous=poll["optional"]["anonymous"])
             self.partial.pop(trigger.nick)
             bot.reply("Your poll is created. When you're ready, open it.")
             bot.reply("\x02SWITCHED TO NORMAL MODE\x02.")
@@ -367,14 +362,14 @@ def poll(bot, trigger):
                 bot.reply("\x1d.poll = anon <{yes|no}>\x1d: set whether the "
                           "poll should be anonymous (won't list nicks of "
                           "voters).")
+                bot.reply("\x1d.poll = interim <{on|off}>\x1d: when 'on', "
+                          "votes are shown even if the poll is open.")
                 return True
             bot.reply("\x1d.poll # <code name>\x1d: set the code name. It "
                       "must only contain alphanumeric characters, underline, "
                       "dash, or period. Its length must be greater than 2 and "
                       "less than 31.")
             bot.reply("\x1d.poll ! <title>\x1d: set the title.")
-            bot.reply("\x1d.poll @ <{on|off}>\x1d: when 'on', votes are shown "
-                      "even if the poll is open.")
             bot.reply("\x1d.poll > <option name>\x1d: append an option.")
             bot.reply("\x1d.poll < <option index>\x1d: remove an option. Note "
                       "that an index is expected (see .poll ?), not the full "
