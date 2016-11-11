@@ -10,6 +10,9 @@ from sopel.module import commands
 yes_answers = ["on", "yes", "+", "yep", "yup", "yeah"]
 no_answers = ["off", "no", "nope", "nop", "no way", "nein"]
 
+format_strip = re.compile("\x0f|\x1f|\x02|\x03(?:\d{1,2}(?:,\d{1,2})?)?",
+                          re.UNICODE)
+
 
 class Poll:
 
@@ -459,7 +462,7 @@ def poll(bot, trigger):
             maxLen = 0
             for item in poll["options"]:
                 total += len(item["votes"])
-                maxLen = max(maxLen, len(item["name"]))
+                maxLen = max(maxLen, len(format_strip.sub("", item["name"])))
             bot.reply("\x02" + str(total) + "\x02 votes total.")
             for item in poll["options"]:
                 vnum = len(item["votes"])
