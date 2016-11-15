@@ -198,6 +198,17 @@ def bar(width, perc):
             "\x0301▏\x03")
 
 
+def priv_only(bot, trigger):
+    if not trigger.is_privmsg:
+        bot.reply("Send this command to me as a PM!")
+        return False
+
+
+def format_len(s):
+    actual_len = len(format_strip.sub("", s))
+    return len(s) - actual_len
+
+
 @commands("poll")
 def poll(bot, trigger):
     try:
@@ -210,6 +221,8 @@ def poll(bot, trigger):
         arg = trigger.group(2)[len(cmd) + 1:]
     if trigger.nick not in self.partial:
         if cmd == "create":
+            if not priv_only(bot, trigger):
+                return
             self.partial[trigger.nick] = {
                 "name": None,
                 "title": None,
@@ -222,6 +235,8 @@ def poll(bot, trigger):
             bot.reply("Type \x1d.poll help\x1d for the list of commands")
             return True
         elif cmd == "help":
+            if not priv_only(bot, trigger):
+                return
             bot.reply("\x1d.poll create\x1d: create a poll, and switch "
                       "to edit mode.")
             bot.reply("\x1d.poll delete <poll>\x1d: delete a poll.")
@@ -241,6 +256,8 @@ def poll(bot, trigger):
         # EDIT MODE
         poll = self.partial[trigger.nick]
         if cmd == "#":
+            if not priv_only(bot, trigger):
+                return
             if not self.codename.match(arg):
                 bot.reply("Bad codename. It's length must be greater than "
                           "2 and less than 31, and it must contain "
@@ -253,10 +270,14 @@ def poll(bot, trigger):
             bot.reply("The \x02codename\x02 set to '" + arg + "'!")
             return True
         elif cmd == "!":
+            if not priv_only(bot, trigger):
+                return
             poll["title"] = arg
             bot.reply("The \x02title\x02 set to '" + arg + "\x0f'!")
             return True
         elif cmd == "?":
+            if not priv_only(bot, trigger):
+                return
             bot.reply("\x02Codename:\x02 " +
                       ("'" + poll["name"] + "'"
                        if poll["name"] else "\x0307not set\x0f"))
@@ -269,7 +290,7 @@ def poll(bot, trigger):
                 bot.reply("\x02Options:\x02 " + ", ".join(
                     "\x02#" + str(pos) + "\x02: " + name + "\x0f"
                     for pos, name in enumerate(poll["options"])
-                ))
+                ), trggier.nick)
             else:
                 bot.reply("\x02Options:\x02 \x0307not set")
             bot.reply("The poll is \x02anonymous\x02."
@@ -281,6 +302,8 @@ def poll(bot, trigger):
                 bot.reply("\x0307Some fields are still \x02unset\x02.")
             return True
         elif cmd == ">":
+            if not priv_only(bot, trigger):
+                return
             if not self.option.match(arg):
                 bot.reply("Well, you didn't provide a name for your "
                           "option.")
@@ -292,6 +315,8 @@ def poll(bot, trigger):
                       ": '" + arg + "\x0f'")
             return True
         elif cmd == "<":
+            if not priv_only(bot, trigger):
+                return
             try:
                 index = int(arg)
             except ValueError:
@@ -313,6 +338,8 @@ def poll(bot, trigger):
             bot.reply("Removed option #" + str(index) + ": '" + opt + "\x0f'")
             return True
         elif cmd == "=":
+            if not priv_only(bot, trigger):
+                return
             try:
                 set_name, set_arg = arg.split(" ", 1)
             except ValueError:
@@ -346,6 +373,8 @@ def poll(bot, trigger):
                 bot.reply("I'm afraid I can't decipher what you gave :<")
                 return
         elif cmd == "~~~":
+            if not priv_only(bot, trigger):
+                return
             if not self.isReady(poll):
                 bot.reply("Some fields are still unset. You can't commit "
                           "partially filled polls.")
@@ -365,10 +394,14 @@ def poll(bot, trigger):
             bot.reply("\x02SWITCHED TO NORMAL MODE\x02.")
             return True
         elif cmd == "***":
+            if not priv_only(bot, trigger):
+                return
             self.partial.pop(trigger.nick)
             bot.reply("Your poll is deleted. \x02SWITCHED TO NORMAL MODE\x02.")
             return True
         elif cmd == "help":
+            if not priv_only(bot, trigger):
+                return
             if arg == "=":
                 bot.reply("\x1d.poll = anon <{yes|no}>\x1d: set whether the "
                           "poll should be anonymous (won't list nicks of "
@@ -418,6 +451,8 @@ def poll(bot, trigger):
                 bot.reply("The poll is already closed.")
                 return
     elif cmd == "vote":
+        if not priv_only(bot, trigger):
+            return
         if len(arg.split(" ")) != 2:
             bot.reply("Something is wrong with your command. Type "
                       "\x1d.poll help\x1d for help.")
@@ -494,7 +529,8 @@ def poll(bot, trigger):
                           bar(10, perc) + " \x02#" +
                           str(item["index"]) + "\x02: " +
                           "{:<{len}}".format(item["name"] + "\x0f",
-                                             len=maxLen + 1) +
+                                             len=maxLen + 1 +
+                                             format_len(item["name"])) +
                           (" │ " + ", ".join(item["votes"])
                            if not poll["anonymous"] else ""))
         return True
@@ -551,7 +587,7 @@ def poll(bot, trigger):
                 index = option["index"]
                 break
         else:
-            bot.reply("The user haven't even voted for any of the "
+            bot.reply("The user hasn't even voted for any of the "
                       "options!")
             return
         result = self.del_vote(user, index, poll_name)
