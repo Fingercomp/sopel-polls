@@ -501,23 +501,20 @@ def poll(bot, trigger):
         bot.reply("\x02Title:\x02 " + poll["title"])
         bot.reply("\x02Created by\x02 " + poll["author"] + " at " +
                   str(poll["date"]))
+        total = 0
+        maxLen = 0
+        for item in poll["options"]:
+            total += len(item["votes"])
+            maxLen = max(maxLen, len(format_strip.sub("", item["name"])))
+        bot.reply("\x02" + str(total) + "\x02 votes total. Poll is \x02" +
+                  ("anonymous"
+                   if poll["anonymous"] else
+                   "unanonymous") + "\x02.")
         if poll["status"] == 1 and not poll["interim"]:
-            total = 0
-            maxLen = 0
-            for item in poll["options"]:
-                total += len(item["votes"])
-                maxLen = max(maxLen, len(item["name"]))
-            bot.reply("\x02" + str(total) + "\x02 votes total.")
             for item in poll["options"]:
                 bot.reply("  \x02#" + str(item["index"]) + "\x02: " +
                           item["name"])
         else:
-            total = 0
-            maxLen = 0
-            for item in poll["options"]:
-                total += len(item["votes"])
-                maxLen = max(maxLen, len(format_strip.sub("", item["name"])))
-            bot.reply("\x02" + str(total) + "\x02 votes total.")
             for item in poll["options"]:
                 vnum = len(item["votes"])
                 if total == 0:
