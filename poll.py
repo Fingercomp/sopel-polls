@@ -5,7 +5,10 @@ import re
 import datetime
 import math
 
+import sopel
 from sopel.module import commands
+from sopel.config.types import StaticSection, ValidatedAttribute
+
 
 yes_answers = ["on", "yes", "+", "yep", "yup", "yeah"]
 no_answers = ["off", "no", "nope", "nop", "no way", "nein"]
@@ -13,23 +16,36 @@ no_answers = ["off", "no", "nope", "nop", "no way", "nein"]
 format_strip = re.compile("\x0f|\x1f|\x02|\x03(?:\d{1,2}(?:,\d{1,2})?)?",
                           re.UNICODE)
 
+self = None
+
+
+class PollSection(StaticSection):
+    url = ValidatedAttribute('url', default="mongodb://localhost:27017")
+
+
+def configure(config):
+    config.define_section('poll', PollSection, validate=False)
+    config.poll.configure_setting('url', 'MongoDB URL')
+
+
+def setup(bot):
+    bot.config.define_section('poll', PollSection)
+    global self
+    self = Poll(bot)
+
 
 class Poll:
-
-    # XXX: Mongo database URL
-    url = "mongodb://localhost:15460"
-
-    # XXX: list of admins (they have access to admin commands)
-    admins = ["Totoro", "fingercomp", "LeshaInc"]
 
     partial = {}
 
     codename = re.compile("^[A-Za-z0-9_.-]{3,30}$")
     option = re.compile("^\S.*$")
 
-    def __init__(self):
+    def __init__(self, bot):
+        self.url = bot.config.poll.url
+        self.admins = bot.config.core.admins
         self.client = MongoClient(self.url)
-        self.db = self.client.brote.poll
+        self.db = self.client.sopel.poll
         self.db.create_index([("name", pymongo.ASCENDING)])
 
         self.updates()
@@ -162,9 +178,6 @@ class Poll:
                 trigger.nick in self.admins)
 
 
-self = Poll()
-
-
 def bar(width, perc):
     chars = [""]
     for i in range(0x258f, 0x2587, -1):
@@ -290,7 +303,7 @@ def poll(bot, trigger):
                 bot.reply("\x02Options:\x02 " + ", ".join(
                     "\x02#" + str(pos) + "\x02: " + name + "\x0f"
                     for pos, name in enumerate(poll["options"])
-                ), trggier.nick)
+                ))
             else:
                 bot.reply("\x02Options:\x02 \x0307not set")
             bot.reply("The poll is \x02anonymous\x02."
@@ -360,11 +373,13 @@ def poll(bot, trigger):
             elif set_name == "interim":
                 if set_arg.lower() in yes_answers:
                     poll["optional"]["interim"] = True
-                    bot.reply("Interim results are set to be \x02available\x02!")
+                    bot.reply("Interim results are set to be "
+                              "\x02available\x02!")
                     return True
                 elif set_arg.lower() in no_answers:
                     poll["optional"]["interim"] = False
-                    bot.reply("Results will be \x02unavaiable\x02 until closed!")
+                    bot.reply("Results will be \x02unavaiable\x02 until "
+                              "closed!")
                     return True
                 else:
                     bot.reply("Erm, what?")
