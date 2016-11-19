@@ -215,6 +215,7 @@ def priv_only(bot, trigger):
     if not trigger.is_privmsg:
         bot.reply("Send this command to me as a PM!")
         return False
+    return True
 
 
 def format_len(s):
