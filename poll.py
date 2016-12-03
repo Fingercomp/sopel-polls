@@ -43,7 +43,7 @@ class Poll:
 
     def __init__(self, bot):
         self.url = bot.config.poll.url
-        self.admins = bot.config.core.admins
+        self.admins = bot.config.core.admins + [bot.config.core.owner]
         self.client = MongoClient(self.url)
         self.db = self.client.sopel.poll
         self.db.create_index([("name", pymongo.ASCENDING)])
@@ -203,12 +203,12 @@ def bar(width, perc):
         color = "10"
     else:
         color = "11"
-    return ("\x0301▕\x03" +
+    return ("▕" +
             "\x03" + color +
             "█" * blocks +
             last_block +
             " " * empty_blocks +
-            "\x0301▏\x03")
+            "\x0f▏\x03")
 
 
 def priv_only(bot, trigger):
@@ -514,9 +514,15 @@ def poll(bot, trigger):
         if not poll:
             bot.reply("Uh oh, no such poll.")
             return
+        if poll["status"] == 0:
+            status = "Poll is \x0304closed\x03."
+        elif poll["status"] == 1:
+            status = "Poll is \x0303open\x03."
+        elif poll["status"] == 2:
+            status = "Poll is \x0307not opened yet\x03."
         bot.reply("\x02Title:\x02 " + poll["title"])
         bot.reply("\x02Created by\x02 " + poll["author"] + " at " +
-                  str(poll["date"]))
+                  str(poll["date"]) + ". " + status)
         total = 0
         maxLen = 0
         for item in poll["options"]:
@@ -534,7 +540,7 @@ def poll(bot, trigger):
             for item in poll["options"]:
                 vnum = len(item["votes"])
                 if total == 0:
-                    perc = 0
+                    perc = 0.0
                 else:
                     perc = round(100 * vnum / total, 1)
                 bot.reply("  \x02" + str(vnum) + "\x02 votes " +
@@ -555,7 +561,7 @@ def poll(bot, trigger):
         reply = []
         for i in polls:
             if i["status"] == 0:
-                format_code = "\x0301"
+                format_code = "\x0315"
             elif i["status"] == 1:
                 format_code = "\x0303"
             elif i["status"] == 2:
