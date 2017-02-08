@@ -467,8 +467,6 @@ def poll(bot, trigger):
                 bot.reply("The poll is already closed.")
                 return
     elif cmd == "vote":
-        if not priv_only(bot, trigger):
-            return
         if len(arg.split(" ")) != 2:
             bot.reply("Something is wrong with your command. Type "
                       "\x1d.poll help\x1d for help.")
